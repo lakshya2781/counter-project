@@ -1,12 +1,18 @@
 from flask import Flask, jsonify
 import threading, time, datetime
+from datetime import timezone, timedelta
 
 app = Flask(__name__)
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def now_ist():
+    return datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
 counter = {
     "value": 1,
     "logs": [],
-    "start_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "start_time": now_ist(),
     "next_double_in": 180
 }
 
@@ -18,7 +24,7 @@ def doubling_counter():
             counter["next_double_in"] = remaining
             time.sleep(1)
         counter["value"] *= 2
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = now_ist()
         log_entry = f"[{timestamp}] Counter doubled → {counter['value']}"
         counter["logs"].append(log_entry)
         with open(LOG_FILE, "a") as f:
@@ -33,11 +39,11 @@ def home():
     <head><title>Counter Monitor</title><meta http-equiv="refresh" content="10"></head>
     <body style="font-family:monospace; background:#111; color:#0f0; padding:40px">
         <h2>Cloud Counter Monitor</h2>
-        <p>Started: {counter['start_time']}</p>
+        <p>Started (IST): {counter['start_time']}</p>
         <h1 style="font-size:4em; color:lime">{counter['value']}</h1>
         <p style="color:yellow">Next double in: {counter['next_double_in']} seconds</p>
         <hr>
-        <h3>Logs:</h3>
+        <h3>Logs (IST):</h3>
         <pre style="color:#0ff">{logs_html}</pre>
         <a href="/api" style="color:cyan">JSON API</a> | <a href="/logs" style="color:cyan">Raw Logs</a>
     </body></html>"""
@@ -47,7 +53,7 @@ def api():
     return jsonify({
         "current_value": counter["value"],
         "next_double_in_seconds": counter["next_double_in"],
-        "start_time": counter["start_time"],
+        "start_time_ist": counter["start_time"],
         "recent_logs": counter["logs"][-10:]
     })
 
