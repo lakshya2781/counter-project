@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
-import threading, time, datetime
+import threading, time, datetime, os
 from datetime import timezone, timedelta
+import psycopg2
 
 app = Flask(__name__)
 
@@ -8,26 +9,68 @@ IST = timezone(timedelta(hours=5, minutes=30))
 def now_ist():
     return datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
-counter = {
-    "value": 1,
-    "logs": [],
-    "start_time": now_ist(),
-    "next_double_in": 180
-}
-LOG_FILE = "counter_log.txt"
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db():
+    return psycopg2.connect(DATABASE_URL)
+
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS counter_state (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            value BIGINT NOT NULL,
+            start_time TEXT NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS counter_logs (
+            id SERIAL PRIMARY KEY,
+            log_time TEXT NOT NULL,
+            value BIGINT NOT NULL
+        )
+    """)
+    # Insert initial row if not exists
+    cur.execute("SELECT COUNT(*) FROM counter_state")
+    if cur.fetchone()[0] == 0:
+        cur.execute("INSERT INTO counter_state (id, value, start_time) VALUES (1, 1, %s)", (now_ist(),))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def get_state():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT value, start_time FROM counter_state WHERE id=1")
+    value, start_time = cur.fetchone()
+    cur.execute("SELECT log_time, value FROM counter_logs ORDER BY id DESC LIMIT 10")
+    logs = [f"[{t}] Counter doubled → {v}" for t, v in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return value, start_time, list(reversed(logs))
+
+def double_value():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM counter_state WHERE id=1")
+    value = cur.fetchone()[0] * 2
+    cur.execute("UPDATE counter_state SET value=%s WHERE id=1", (value,))
+    cur.execute("INSERT INTO counter_logs (log_time, value) VALUES (%s, %s)", (now_ist(), value))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return value
+
+next_double_in = {"seconds": 180}
 
 def doubling_counter():
     while True:
         for remaining in range(180, 0, -1):
-            counter["next_double_in"] = remaining
+            next_double_in["seconds"] = remaining
             time.sleep(1)
-        counter["value"] *= 2
-        timestamp = now_ist()
-        log_entry = f"[{timestamp}] Counter doubled → {counter['value']}"
-        counter["logs"].append(log_entry)
-        with open(LOG_FILE, "a") as f:
-            f.write(log_entry + "\n")
-        print(log_entry, flush=True)
+        new_value = double_value()
+        print(f"[{now_ist()}] Counter doubled → {new_value}", flush=True)
 
 @app.route("/")
 def home():
@@ -35,22 +78,16 @@ def home():
     <html>
     <head>
         <title>Counter Monitor</title>
-        <style>
-            body { font-family:monospace; background:#111; color:#0f0; padding:40px; }
-            #value { font-size:4em; color:lime; }
-            #countdown { color:yellow; }
-            pre { color:#0ff; }
-        </style>
+        <style>body{font-family:monospace;background:#111;color:#0f0;padding:40px;}
+        #value{font-size:4em;color:lime;} #countdown{color:yellow;} pre{color:#0ff;}</style>
     </head>
     <body>
-        <h2>🖥️ Cloud Counter Monitor</h2>
+        <h2>🖥️ Cloud Counter Monitor (Persistent)</h2>
         <p>Started (IST): <span id="start_time">loading...</span></p>
         <div id="value">--</div>
         <p>Next double in: <span id="countdown">--</span> seconds</p>
-        <hr>
-        <h3>📋 Logs:</h3>
+        <hr><h3>📋 Logs:</h3>
         <pre id="logs">loading...</pre>
-
         <script>
         async function updateData() {
             const res = await fetch('/api');
@@ -58,22 +95,24 @@ def home():
             document.getElementById('value').innerText = data.current_value;
             document.getElementById('countdown').innerText = data.next_double_in_seconds;
             document.getElementById('start_time').innerText = data.start_time_ist;
-            document.getElementById('logs').innerText = data.recent_logs.join('\\n') || 'Waiting for first double...';
+            document.getElementById('logs').innerText = data.recent_logs.join('\\n') || 'Waiting...';
         }
-        updateData();              // run once immediately
-        setInterval(updateData, 2000);   // then every 2 seconds, no page reload
+        updateData();
+        setInterval(updateData, 2000);
         </script>
     </body></html>"""
 
 @app.route("/api")
 def api():
+    value, start_time, logs = get_state()
     return jsonify({
-        "current_value": counter["value"],
-        "next_double_in_seconds": counter["next_double_in"],
-        "start_time_ist": counter["start_time"],
-        "recent_logs": counter["logs"][-10:]
+        "current_value": value,
+        "next_double_in_seconds": next_double_in["seconds"],
+        "start_time_ist": start_time,
+        "recent_logs": logs
     })
 
 if __name__ == "__main__":
+    init_db()
     threading.Thread(target=doubling_counter, daemon=True).start()
     app.run(host="0.0.0.0", port=10000, threaded=True)
