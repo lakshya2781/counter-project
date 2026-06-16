@@ -1,17 +1,16 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import threading, time, datetime, os
 from datetime import timezone, timedelta
 import psycopg2
 
 app = Flask(__name__)
 
-DBVIEW_PASSWORD = os.environ.get("DBVIEW_PASSWORD", "Lakshya2781")
-
 IST = timezone(timedelta(hours=5, minutes=30))
 def now_ist():
     return datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+DBVIEW_PASSWORD = os.environ.get("DBVIEW_PASSWORD", "Lakshya2781")
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -33,7 +32,6 @@ def init_db():
             value BIGINT NOT NULL
         )
     """)
-    # Insert initial row if not exists
     cur.execute("SELECT COUNT(*) FROM counter_state")
     if cur.fetchone()[0] == 0:
         cur.execute("INSERT INTO counter_state (id, value, start_time) VALUES (1, 1, %s)", (now_ist(),))
@@ -90,6 +88,7 @@ def home():
         <p>Next double in: <span id="countdown">--</span> seconds</p>
         <hr><h3>📋 Logs:</h3>
         <pre id="logs">loading...</pre>
+        <p><a href="/dbview" style="color:cyan">🗄️ View Database</a></p>
         <script>
         async function updateData() {
             const res = await fetch('/api');
@@ -116,7 +115,6 @@ def api():
 
 @app.route("/dbview")
 def dbview():
-    # --- Simple password check via URL parameter ---
     provided_password = request.args.get("password", "")
     if provided_password != DBVIEW_PASSWORD:
         return """
@@ -130,7 +128,6 @@ def dbview():
 
     conn = get_db()
     cur = conn.cursor()
-
     sections = []
 
     cur.execute("SELECT * FROM counter_state")
@@ -182,17 +179,15 @@ def dbview():
         <h2>🗄️ Database Viewer (Read-Only)</h2>
         <p style="color:#aaa">Showing tables from shared-logs-db</p>
     """
-
     for table_name, cols, rows in sections:
         html += f"<h3>📋 {table_name} ({len(rows)} rows shown)</h3>"
         html += "<table><tr>" + "".join(f"<th>{c}</th>" for c in cols) + "</tr>"
         for row in rows:
             html += "<tr>" + "".join(f"<td>{val}</td>" for val in row) + "</tr>"
         html += "</table>"
-
     html += "</body></html>"
     return html
-    
+
 if __name__ == "__main__":
     init_db()
     threading.Thread(target=doubling_counter, daemon=True).start()
