@@ -5,6 +5,8 @@ import psycopg2
 
 app = Flask(__name__)
 
+DBVIEW_PASSWORD = os.environ.get("DBVIEW_PASSWORD", "Lakshya2781")
+
 IST = timezone(timedelta(hours=5, minutes=30))
 def now_ist():
     return datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
@@ -114,12 +116,23 @@ def api():
 
 @app.route("/dbview")
 def dbview():
+    # --- Simple password check via URL parameter ---
+    provided_password = request.args.get("password", "")
+    if provided_password != DBVIEW_PASSWORD:
+        return """
+        <html>
+        <head><title>Locked</title></head>
+        <body style="font-family:monospace; background:#111; color:#0f0; padding:60px; text-align:center;">
+            <h2>🔒 Access Restricted</h2>
+            <p>Add ?password=YOUR_PASSWORD to the URL to view this page.</p>
+        </body></html>
+        """, 401
+
     conn = get_db()
     cur = conn.cursor()
 
     sections = []
 
-    # --- Counter tables ---
     cur.execute("SELECT * FROM counter_state")
     cols = [desc[0] for desc in cur.description]
     rows = cur.fetchall()
@@ -130,7 +143,6 @@ def dbview():
     rows = cur.fetchall()
     sections.append(("counter_logs", cols, rows))
 
-    # --- Population tables ---
     cur.execute("SELECT * FROM population_state ORDER BY state_name")
     cols = [desc[0] for desc in cur.description]
     rows = cur.fetchall()
@@ -141,7 +153,6 @@ def dbview():
     rows = cur.fetchall()
     sections.append(("population_history", cols, rows))
 
-    # --- CPaaS tables ---
     cur.execute("SELECT * FROM cpaas_totals")
     cols = [desc[0] for desc in cur.description]
     rows = cur.fetchall()
