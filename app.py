@@ -62,11 +62,11 @@ def double_value():
     conn.close()
     return value
 
-next_double_in = {"seconds": 180}
+next_double_in = {"seconds": 1800}
 
 def doubling_counter():
     while True:
-        for remaining in range(180, 0, -1):
+        for remaining in range(1800, 0, -1):
             next_double_in["seconds"] = remaining
             time.sleep(1)
         new_value = double_value()
