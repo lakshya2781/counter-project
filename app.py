@@ -175,13 +175,15 @@ def dbview():
     sections = []
 
     table_list = ["counter_state", "counter_logs", "population_state",
-                  "population_history", "cpaas_totals", "cpaas_minute_stats"]
+                  "population_history", "cpaas_totals", "cpaas_minute_stats",
+                  "stock_state", "stock_history"]
 
     for table_name in table_list:
         if table_filter != "all" and table_filter != table_name:
             continue
 
-        has_log_time = table_name in ("counter_logs", "population_history", "cpaas_minute_stats")
+        has_log_time = table_name in ("counter_logs", "population_history",
+                                       "cpaas_minute_stats", "stock_history")
 
         if has_log_time:
             query = f"SELECT * FROM {table_name} WHERE 1=1"
