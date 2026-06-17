@@ -216,7 +216,7 @@ def dbview():
         for t in table_list
     )
 
-    limit_options_list = ["50", "200", "500", "1000", "all"]
+    limit_options_list = ["20", "50", "200", "500", "1000", "all"]
     limit_options = "".join(
         f'<option value="{l}" {"selected" if row_limit_raw==l else ""}>{"All" if l=="all" else l}</option>'
         for l in limit_options_list
